@@ -121,7 +121,22 @@ async def editor_node(state: State) -> Command[Literal["writer", "__end__"]]:
 
     if revision_count >= 2:
         print("\n⚠️  Max revisions (2) reached - forcing approval")
+    
+    article_content = None
+    for msg in reversed(state["messages"]):
+        if getattr(msg, "type", None) == "ai" and not getattr(msg, "tool_calls", None):
+            article_content = msg.content
+            break
 
+    if article_content:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        output_dir = os.path.join(script_dir, "output")
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, "article.md")
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(article_content)
+        print(f"\n📄 Article saved to: {output_path}")
+        
     print("\n✓ Editor approved - workflow complete")
     print("="*50 + "\n")
     return Command(
