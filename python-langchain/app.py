@@ -162,7 +162,7 @@ async def main():
         temperature=0.7,
         base_url="https://models.github.ai/inference",
         api_key=os.getenv("GITHUB_TOKEN"),
-        max_tokens=500
+        max_tokens=1000
     )
     
     # 2. Load all templates
