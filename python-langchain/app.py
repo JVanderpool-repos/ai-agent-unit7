@@ -16,7 +16,7 @@ load_dotenv()
 # 1. Define shared state
 class State(TypedDict):
     messages: Annotated[list, add_messages]
-
+    revision_count: int
 # Global variable for the researcher agent (will be set in main)
 researcher_agent = None
 writer_agent = None
@@ -28,7 +28,7 @@ async def researcher_node(state: State) -> Command[Literal["writer", "__end__"]]
     print("\n" + "="*50)
     print("RESEARCHER NODE")
     print("="*50)
-    trimmed_messages = state["messages"][-3:]
+    trimmed_messages = state["messages"][-1:]
     response = await researcher_agent.ainvoke({"messages": trimmed_messages})
 
     
@@ -98,33 +98,41 @@ async def editor_node(state: State) -> Command[Literal["writer", "__end__"]]:
     print("\n" + "="*50)
     print("EDITOR NODE")
     print("="*50)
-    
+
     response = await editor_agent.ainvoke({"messages": state["messages"]})
-    
-    # Debug: Print editor feedback
+
     final_message = response["messages"][-1]
     print(f"\nEditor Feedback:")
     print(f"{final_message.content}")
-    
-    # Example logic: if editor finds an error, hand back to writer
-    if "REVISE" in str(final_message.content):
-        print("\n⚠️  Editor requested REVISION - routing back to writer")
+
+    # Get current revision count
+    revision_count = state["revision_count"]
+
+    if "REVISE" in str(final_message.content) and revision_count < 2:
+        print(f"\n⚠️  Revision requested ({revision_count + 1}/2) - routing back to writer")
         print("="*50 + "\n")
         return Command(
-            update={"messages": response["messages"]},
+            update={
+                "messages": response["messages"],
+                "revision_count": revision_count + 1
+            },
             goto="writer"
         )
-    
+
+    if revision_count >= 2:
+        print("\n⚠️  Max revisions (2) reached - forcing approval")
+
     print("\n✓ Editor approved - workflow complete")
     print("="*50 + "\n")
-    
     return Command(
         update={"messages": response["messages"]},
         goto="__end__"
-    )    
+    )
+
 async def main():
     """Run the multi-agent content creation workflow."""
-    global researcher_agent, writer_agent, editor_agent
+    global researcher_agent, writer_agent, fact_checker_agent, editor_agent  # ← all here
+    
     # Check API keys
     if not os.getenv("GITHUB_TOKEN"):
         print("Error: GITHUB_TOKEN not found in .env")
@@ -133,44 +141,39 @@ async def main():
         print("Error: TAVILY_API_KEY not found in .env")
         return
     
-    # 1. Initialize LLM (AFTER API checks)
+    # 1. Initialize LLM
     llm = ChatOpenAI(
         model="openai/gpt-4o-mini",
         temperature=0.7,
         base_url="https://models.github.ai/inference",
         api_key=os.getenv("GITHUB_TOKEN"),
-        max_tokens=1000
+        max_tokens=500
     )
     
-    # 2. Load researcher template
+    # 2. Load all templates
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        template_path = os.path.join(script_dir, "templates", "researcher.json")
-        with open(template_path, "r") as f:
-            researcher_data = json.load(f)
-            researcher_prompt = researcher_data.get("template", "You are a helpful research assistant.")
+        
+        with open(os.path.join(script_dir, "templates", "researcher.json"), "r") as f:
+            researcher_prompt = json.load(f).get("template", "You are a helpful research assistant.")
         print("✅ Loaded researcher template")
-
-        # ADD THESE:
+        
         with open(os.path.join(script_dir, "templates", "writer.json"), "r") as f:
             writer_prompt = json.load(f).get("template", "You are a helpful writing assistant.")
         print("✅ Loaded writer template")
+        
         with open(os.path.join(script_dir, "templates", "fact_checker.json"), "r") as f:
             fact_checker_prompt = json.load(f).get("template", "You are a fact-checking assistant.")
         print("✅ Loaded fact-checker template")
-
-        global fact_checker_agent
-        fact_checker_agent = create_agent(llm, tools=[], system_prompt=fact_checker_prompt)
-        print("✅ Fact-checker agent ready")
-
         
         with open(os.path.join(script_dir, "templates", "editor.json"), "r") as f:
             editor_prompt = json.load(f).get("template", "You are a helpful editing assistant.")
         print("✅ Loaded editor template")
 
-    except FileNotFoundError:
-        print(f"❌ Template missing: {template_path}")
+    except FileNotFoundError as e:
+        print(f"❌ Template missing: {e}")
         return
+
 
     
     # 3. Setup MCP/Tavily
@@ -197,6 +200,11 @@ async def main():
         tools=[],
         system_prompt=writer_prompt
     )
+    fact_checker_agent = create_agent(
+        llm,
+        tools=[],
+        system_prompt=fact_checker_prompt
+    )
 
     editor_agent = create_agent(
         llm, 
@@ -222,8 +230,10 @@ async def main():
     
     user_input = input("Enter research topic: ")
     initial_message = HumanMessage(content=user_input)
-    result = await graph.ainvoke({"messages": [initial_message]})
-    
+    result = await graph.ainvoke({
+        "messages": [initial_message],
+        "revision_count": 0
+    })
     print("\n" + "="*50)
     print("✅ Workflow Complete!")
     print("="*50 + "\n")
