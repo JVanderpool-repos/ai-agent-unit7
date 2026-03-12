@@ -144,7 +144,8 @@ async def editor_node(state: State) -> Command[Literal["writer", "__end__"]]:
         goto="__end__"
     )
 
-async def main():
+async def main(topic: str | None = None):
+
     """Run the multi-agent content creation workflow."""
     global researcher_agent, writer_agent, fact_checker_agent, editor_agent  # ← all here
     
@@ -231,15 +232,13 @@ async def main():
         system_prompt=editor_prompt
     )
     print("✅ Writer and Editor agents ready")
-    # 5. Build + test graph
-        # Build the Graph without manual edges (Edgeless Handoff)
+        # 5. Build + test graph
     builder = StateGraph(State)
     builder.add_node("researcher", researcher_node)
     builder.add_node("writer", writer_node)
     builder.add_node("fact_checker", fact_checker_node)
     builder.add_node("editor", editor_node)
     
-    # Only need to set the entry point
     builder.add_edge(START, "researcher")
     graph = builder.compile()
     
@@ -247,22 +246,28 @@ async def main():
     print("Starting Multi-Agent Content Creation Workflow")
     print("="*50)
     
-    user_input = input("Enter research topic: ")
-    initial_message = HumanMessage(content=user_input)
+    if topic is None:
+        topic = input("Enter research topic: ")
+    
+    initial_message = HumanMessage(content=topic)
     async for chunk in graph.astream(
         {"messages": [initial_message], "revision_count": 0},
         stream_mode="values"
     ):
-        final_state = chunk  # each chunk is the full state after a node fires
+        final_state = chunk
 
     print("\n" + "="*50)
     print("✅ Workflow Complete!")
     print("="*50 + "\n")
-    print("Final Output:")
-    if final_state and final_state.get("messages"):
-        print(final_state["messages"][-1].content)
-    else:
-        print("No output")
+
+    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", "article.md")
+    if os.path.exists(output_path):
+        with open(output_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "No output generated"
+
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+

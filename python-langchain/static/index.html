@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Article Generator</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; }
+        #output { margin-top: 20px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>🤖 AI Article Generator</h1>
+    <input id="topic" type="text" placeholder="Enter research topic..." style="width:70%; padding:8px;">
+    <button onclick="generate()">Generate</button>
+    <div id="output"></div>
+
+    <script>
+        async function generate() {
+            const topic = document.getElementById('topic').value;
+            document.getElementById('output').innerText = "Generating...";
+            const res = await fetch('/generate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({topic})
+            });
+            const data = await res.json();
+            document.getElementById('output').innerText = data.article;
+        }
+    </script>
+</body>
+</html>
