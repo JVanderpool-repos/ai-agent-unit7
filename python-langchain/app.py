@@ -230,15 +230,20 @@ async def main():
     
     user_input = input("Enter research topic: ")
     initial_message = HumanMessage(content=user_input)
-    result = await graph.ainvoke({
-        "messages": [initial_message],
-        "revision_count": 0
-    })
+    async for chunk in graph.astream(
+        {"messages": [initial_message], "revision_count": 0},
+        stream_mode="values"
+    ):
+        final_state = chunk  # each chunk is the full state after a node fires
+
     print("\n" + "="*50)
     print("✅ Workflow Complete!")
     print("="*50 + "\n")
     print("Final Output:")
-    print(result["messages"][-1].content if result["messages"] else "No output")
+    if final_state and final_state.get("messages"):
+        print(final_state["messages"][-1].content)
+    else:
+        print("No output")
 
 if __name__ == "__main__":
     asyncio.run(main())
