@@ -193,13 +193,17 @@ async def main():
     
     # 3. Setup MCP/Tavily
     tavily_api_key = os.getenv("TAVILY_API_KEY")
-    research_client = MultiServerMCPClient({
+    research_client = MultiServerMCPClient({ #type: ignore
         "tavily": {
             "transport": "http",
             "url": f"https://mcp.tavily.com/mcp/?tavilyApiKey={tavily_api_key}",
+        },
+        "wikipedia": {
+            "transport": "stdio",
+            "command": "wikipedia-mcp",
+            "args": ["--transport", "stdio"],
         }
     })
-    
     researcher_tools = await research_client.get_tools()
     print(f"✅ Research tools: {[tool.name for tool in researcher_tools]}")
     

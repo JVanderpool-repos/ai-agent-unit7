@@ -4,3 +4,4 @@ langchain-community>=0.3.0
 langgraph>=0.2.0
 python-dotenv>=1.0.0
 langchain-mcp-adapters>=0.1.0
+wikipedia-mcp
