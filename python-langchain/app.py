@@ -20,6 +20,7 @@ class State(TypedDict):
 # Global variable for the researcher agent (will be set in main)
 researcher_agent = None
 writer_agent = None
+fact_checker_agent = None
 editor_agent = None
 
 async def researcher_node(state: State) -> Command[Literal["writer", "__end__"]]:
@@ -55,7 +56,7 @@ async def researcher_node(state: State) -> Command[Literal["writer", "__end__"]]
         goto="writer"
     )
 
-async def writer_node(state: State) -> Command[Literal["editor", "__end__"]]:
+async def writer_node(state: State) -> Command[Literal["fact_checker", "__end__"]]:
     """Writer node that hands off to editor."""
     print("\n" + "="*50)
     print("WRITER NODE")
@@ -70,6 +71,23 @@ async def writer_node(state: State) -> Command[Literal["editor", "__end__"]]:
     print("\n" + "="*50 + "\n")
     
     # Native handoff: explicitly tell the graph to move to 'editor'
+    return Command(
+        update={"messages": response["messages"]},
+        goto="fact_checker"   
+    )
+async def fact_checker_node(state: State) -> Command[Literal["editor", "__end__"]]:
+    """Fact-checker node that reviews writer content before editor."""
+    print("\n" + "="*50)
+    print("FACT-CHECKER NODE")
+    print("="*50)
+
+    response = await fact_checker_agent.ainvoke({"messages": state["messages"]})
+
+    final_message = response["messages"][-1]
+    print(f"\nFact-Checker Output:")
+    print(f"{final_message.content}")
+    print("\n" + "="*50 + "\n")
+
     return Command(
         update={"messages": response["messages"]},
         goto="editor"
@@ -137,7 +155,15 @@ async def main():
         with open(os.path.join(script_dir, "templates", "writer.json"), "r") as f:
             writer_prompt = json.load(f).get("template", "You are a helpful writing assistant.")
         print("✅ Loaded writer template")
+        with open(os.path.join(script_dir, "templates", "fact_checker.json"), "r") as f:
+            fact_checker_prompt = json.load(f).get("template", "You are a fact-checking assistant.")
+        print("✅ Loaded fact-checker template")
 
+        global fact_checker_agent
+        fact_checker_agent = create_agent(llm, tools=[], system_prompt=fact_checker_prompt)
+        print("✅ Fact-checker agent ready")
+
+        
         with open(os.path.join(script_dir, "templates", "editor.json"), "r") as f:
             editor_prompt = json.load(f).get("template", "You are a helpful editing assistant.")
         print("✅ Loaded editor template")
@@ -183,6 +209,7 @@ async def main():
     builder = StateGraph(State)
     builder.add_node("researcher", researcher_node)
     builder.add_node("writer", writer_node)
+    builder.add_node("fact_checker", fact_checker_node)
     builder.add_node("editor", editor_node)
     
     # Only need to set the entry point
